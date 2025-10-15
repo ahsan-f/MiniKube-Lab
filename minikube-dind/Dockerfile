@@ -1,18 +1,18 @@
 # Use a Docker-in-Docker base image
 FROM docker:dind
 
-# Install required packages (curl, bash)
+# Install required packages (curl, bash, etc.)
 RUN apk update && apk add \
     bash \
     curl \
     socat \
-    # Install git for potential cloning in CI scenarios
     git \
     && rm -rf /var/cache/apk/*
 
-# Define versions for Minikube and Kubectl (consider using ARG or ENV for dynamic updates)
-ARG K8S_VERSION="v1.28.2" # Current stable K8s version, update as needed
-ARG MINIKUBE_VERSION="v1.31.2" # Current stable Minikube version, update as needed
+# Define versions for Minikube and Kubectl
+# FIX: Pin to a stable K8s version known to work well in DinD (e.g., v1.27.3)
+ARG K8S_VERSION="v1.27.3" 
+ARG MINIKUBE_VERSION="v1.31.2" 
 
 # Download and install kubectl
 RUN curl -LO "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl" \
