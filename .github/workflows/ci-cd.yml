@@ -45,7 +45,7 @@ jobs:
     - name: 🚀 Start Minikube-in-DinD Service and Wait for Kubernetes
       id: start_minikube
       run: |
-        TIMEOUT=300 # 5 minutes max wait
+        TIMEOUT=600 # INCREASED to 10 minutes (600 seconds)
         ELAPSED=0
         
         # Start the DinD container
