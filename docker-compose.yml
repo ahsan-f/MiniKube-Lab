@@ -1,61 +1,30 @@
 version: '3.8'
 
 services:
-  # Service for your Node.js application
-  app:
-    build:
-      context: . # Build from the current directory
-      dockerfile: app/Dockerfile
-    image: my-node-app:latest
-    container_name: my-node-app-dev
-    ports:
-      - "3000:3000"
-    environment:
-      NODE_ENV: development
-    volumes:
-      - ./app:/app # Mount source code for live updates during dev (optional for CI)
-      - /app/node_modules # Exclude node_modules from host mount
-
-  # Service for running tests (could be a separate container if tests are complex)
-  # For this example, we'll just run npm test in the app container
-  app-test:
-    build:
-      context: .
-      dockerfile: app/Dockerfile
-    image: my-node-app:test
-    container_name: my-node-app-tester
-    command: npm test # Run tests
-    # Ensure this container is not directly exposed if it's purely for testing
-    # volumes:
-    #   - ./app:/app # Optionally mount for tests
-
-  # Service for the Minikube-in-DinD environment
-  minikube-dind:
-    build:
+  minikube-ci-env:
+    # Use the local Dockerfile to build the Minikube DinD image
+    build: 
       context: .
       dockerfile: minikube-dind/Dockerfile
-    image: minikube-dind:latest
+    
+    # CRITICAL: DinD requires privileged mode
+    privileged: true
+    
+    # Use a fixed name for easy management and access
     container_name: minikube-ci-env
-    privileged: true # REQUIRED for DinD
-    # Minikube needs decent resources
-    mem_limit: 4096m
-    cpu_shares: 512
-    # Mount volumes to persist Minikube data and for any shared files
+
+    # Volumes necessary for DinD to function correctly
     volumes:
-      - minikube-dind-data:/root/.minikube # Persist Minikube state
-      # The Docker socket within the DinD container is not typically mounted to the host.
-      # Instead, the minikube client on the host connects to the minikube container.
-      # Here, the DinD container provides its own Docker socket for minikube to use.
-    # Expose necessary ports if you want to access NodePort services from the host
-    # For CI, you might not need to expose ports, but for debugging, it's useful.
-    ports:
-      - "8080:8080" # Example for a service deployed to K8s
-    environment:
-      # Pass Docker credentials if the minikube-dind needs to pull private images
-      # DOCKER_USERNAME: ${DOCKER_USERNAME}
-      # DOCKER_PASSWORD: ${DOCKER_PASSWORD}
-    entrypoint: /usr/local/bin/start-minikube.sh # Explicitly use the start script
+      - minikube-certs:/certs/client
+      - minikube-data:/var/lib/docker
+    
+    # This prevents the container from exiting
+    tty: true
+    stdin_open: true
+    # Expose necessary ports if you need to access Minikube externally
+    # ports:
+    #   - "8080:8080" 
 
 volumes:
-  minikube-dind-data:
-    driver: local
+  minikube-certs:
+  minikube-data:
