@@ -31,7 +31,6 @@ echo "------------------"
 echo "Starting Minikube..."
 
 # Use stable K8s version and --preload for maximum stability in CI. 
-# --preload ensures necessary K8s images are pulled before starting components.
 minikube start \
   --driver=docker \
   --kubernetes-version=v1.27.3 \
