@@ -13,13 +13,11 @@ sleep 5 # Added buffer
 
 echo "Starting Minikube..."
 
-# Start minikube with increased resources and less aggressive internal wait
+# FIX: Removed explicit --memory and --cpus limits. Let the DinD container inherit from the host runner.
 minikube start \
   --driver=docker \
   --force \
   --wait=false \
-  --memory=6000 \
-  --cpus=3 \
   --container-name minikube-cluster
 
 echo "Minikube start command executed. Relying on external check to confirm readiness."
