@@ -13,7 +13,7 @@ sleep 5
 
 # --- AGGRESSIVE DEBUGGING START ---
 echo "--- PATH DEBUG ---"
-# Check if the binary exists (must pass after the Dockerfile fix)
+# Runtime check
 if [ ! -f /usr/local/bin/minikube ]; then
   echo "::error::FATAL: /usr/local/bin/minikube does not exist."
   ls -l /usr/local/bin/
@@ -21,7 +21,7 @@ if [ ! -f /usr/local/bin/minikube ]; then
 fi
 
 if ! /usr/local/bin/minikube version; then
-  echo "::error::FATAL: minikube binary is not executable or failed to run."
+  echo "minikube version check failed. Error running binary."
   exit 1
 fi
 echo "minikube binary check passed. Proceeding with start."
@@ -30,7 +30,8 @@ echo "------------------"
 
 echo "Starting Minikube..."
 
-# Use stable K8s version and --preload to combat network instability in CI
+# Use stable K8s version and --preload for maximum stability in CI. 
+# --preload ensures necessary K8s images are pulled before starting components.
 minikube start \
   --driver=docker \
   --kubernetes-version=v1.27.3 \
@@ -41,4 +42,5 @@ minikube start \
 
 echo "Minikube start command executed. Relying on external check to confirm readiness."
 
+# CRITICAL: Keep the container running indefinitely for external access (CI/Compose)
 tail -f /dev/null
