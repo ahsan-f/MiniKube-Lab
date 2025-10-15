@@ -13,8 +13,8 @@ sleep 5 # Added buffer
 
 echo "Starting Minikube..."
 
-# FIX: Removed explicit --memory and --cpus limits. Let the DinD container inherit from the host runner.
-minikube start \
+# FIX: Ensure we use the full path just in case, though /usr/local/bin is in PATH
+/usr/local/bin/minikube start \
   --driver=docker \
   --force \
   --wait=false \
@@ -23,4 +23,4 @@ minikube start \
 echo "Minikube start command executed. Relying on external check to confirm readiness."
 
 # CRUCIAL: Use tail -f /dev/null to keep the container running indefinitely
-tail -f /dev/null
+tail -f /dev/null 
