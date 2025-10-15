@@ -7,13 +7,13 @@ services:
       context: .
       dockerfile: minikube-dind/Dockerfile
     
-    # CRITICAL: DinD requires privileged mode
+    # CRITICAL: DinD requires privileged mode to manage the nested Docker daemon
     privileged: true
     
     # Use a fixed name for easy management and access
     container_name: minikube-ci-env
 
-    # Volumes necessary for DinD to function correctly
+    # Volumes necessary for DinD to function correctly and persist data
     volumes:
       - minikube-certs:/certs/client
       - minikube-data:/var/lib/docker
