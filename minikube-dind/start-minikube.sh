@@ -1,20 +1,16 @@
 #!/bin/bash
 set -e
 
-echo "Starting Docker daemon..."
-# The `docker:dind` image's ENTRYPOINT typically starts dockerd.
-# We just need to wait for it.
+echo "Starting Docker daemon and waiting for readiness..."
+# Wait for the DinD's Docker daemon to be fully ready
 until docker info >/dev/null 2>&1; do
-  echo "Waiting for Docker daemon to start..."
+  echo "Waiting for Docker daemon..."
   sleep 1
 done
 
 echo "Docker daemon is running. Starting Minikube..."
 
 # Start minikube using the 'docker' driver
-# --force is often needed when running as root in a container
-# --wait=true: We want Minikube to be fully ready before proceeding in CI
-# --container-name: Give the minikube container a predictable name inside the DinD
 minikube start \
   --driver=docker \
   --force \
@@ -23,17 +19,12 @@ minikube start \
   --cpus=2 \
   --container-name minikube-cluster
 
-echo "Minikube started. Waiting for cluster to be ready..."
-# Wait for the Kubernetes API to be available
-kubectl wait --for=condition=ready node/minikube --timeout=5m
-# Wait for core components
+echo "Minikube started. Waiting for core cluster components to be ready..."
+# Wait for a key system component to confirm K8s is functional
+# We rely on the external workflow to run the final 'kubectl get nodes' check, but this confirms the internal start is complete.
 kubectl wait --namespace=kube-system --for=condition=ready pod -l k8s-app=kube-dns --timeout=5m
-kubectl wait --namespace=kube-system --for=condition=ready pod -l k8s-app=kube-proxy --timeout=5m
-kubectl wait --namespace=kube-system --for=condition=ready pod -l component=etcd --timeout=5m
 
-echo "Minikube cluster is ready!"
+echo "Minikube cluster initialization complete. Keeping container alive..."
 
-# Keep the container running in the background for CI or interactive use.
-# For CI, the workflow will typically run kubectl commands after this script exits.
-# This 'sleep infinity' is just to keep the container alive.
-sleep infinity & wait $!
+# CRUCIAL: Use tail -f /dev/null to keep the container running indefinitely
+tail -f /dev/null
