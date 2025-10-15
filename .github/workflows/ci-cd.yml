@@ -12,7 +12,6 @@ env:
   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
   DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
   DOCKER_IMAGE_NAME: my-node-app
-  # FIX: Concatenate the username secret with the static image name string directly
   DOCKER_REPO: ${{ secrets.DOCKER_USERNAME }}/my-node-app 
 
 jobs:
@@ -21,13 +20,13 @@ jobs:
     
     steps:
     - name: 📦 Checkout Repository
-      uses: actions/checkout@v4 # Updated to v4 for best practice
+      uses: actions/checkout@v4
 
     # ----------------------------------------------------
     # --- 1. Build and Test Application ---
     # ----------------------------------------------------
     - name: 🛠️ Set up Docker BuildX
-      uses: docker/setup-buildx-action@v3 # Updated to v3 for best practice
+      uses: docker/setup-buildx-action@v3
 
     - name: 🏗️ Build Application Image
       run: docker build -t ${{ env.DOCKER_IMAGE_NAME }}:latest -f app/Dockerfile .
@@ -44,20 +43,42 @@ jobs:
 
     - name: 🚀 Start Minikube-in-DinD Service and Wait for Kubernetes
       run: |
-        # Start the DinD container
-        docker run -d --privileged --name minikube-ci-env minikube-dind:latest
+        CONTAINER_NAME=minikube-ci-env
+        TIMEOUT=300 # 5 minutes max wait
+        ELAPSED=0
         
-        # Wait for Minikube's Kubernetes API to be available inside the container
-        echo "Waiting for Minikube Kubernetes API..."
-        until docker exec minikube-ci-env kubectl get nodes >/dev/null 2>&1; do
+        # Start the DinD container
+        docker run -d --privileged --name $CONTAINER_NAME minikube-dind:latest
+
+        echo "Waiting for Minikube Kubernetes API (max ${TIMEOUT} seconds)..."
+        
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+          # Check 1: Did the container crash?
+          if ! docker ps -q -f name=$CONTAINER_NAME; then
+            echo "::error::Minikube DinD container exited unexpectedly!"
+            docker logs $CONTAINER_NAME
+            exit 1
+          fi
+          
+          # Check 2: Is Minikube ready inside the container?
+          if docker exec $CONTAINER_NAME kubectl get nodes >/dev/null 2>&1; then
+            echo "Minikube Kubernetes API is ready and configured!"
+            break
+          fi
+          
           sleep 5
+          ELAPSED=$((ELAPSED + 5))
         done
-        echo "Minikube Kubernetes API is ready and configured!"
+        
+        if [ $ELAPSED -ge $TIMEOUT ]; then
+          echo "::error::Minikube failed to start within the timeout period."
+          docker logs $CONTAINER_NAME
+          exit 1
+        fi
 
     - name: 📤 Load Application Image into Minikube's Docker Daemon
-      # This is crucial for using 'imagePullPolicy: Never'
       run: |
-        # Save the application image to a tarball and stream it into the DinD container's Docker daemon
+        # Stream the image into the DinD container's internal Docker daemon
         docker save ${{ env.DOCKER_IMAGE_NAME }}:latest | docker exec -i minikube-ci-env docker load
 
     - name: 🚢 Deploy Application to Minikube
@@ -99,7 +120,7 @@ jobs:
           type: NodePort
         EOF
         
-        # 2. Copy the YAML into the DinD container and apply it
+        # 2. Copy and apply the YAML using the internal kubectl
         docker cp deployment.yaml minikube-ci-env:/tmp/deployment.yaml
         docker exec minikube-ci-env kubectl apply -f /tmp/deployment.yaml
         
@@ -110,18 +131,16 @@ jobs:
     # --- 3. Push to Docker Hub ---
     # ----------------------------------------------------
     - name: 🔑 Log in to Docker Hub
-      uses: docker/login-action@v3 # Updated to v3 for best practice
+      uses: docker/login-action@v3
       with:
         username: ${{ env.DOCKER_USERNAME }}
         password: ${{ env.DOCKER_PASSWORD }}
 
     - name: 🏷️ Tag and Push Application Image to Docker Hub
       run: |
-        # Tag with the full repository path
         docker tag ${{ env.DOCKER_IMAGE_NAME }}:latest ${{ env.DOCKER_REPO }}:latest
         docker push ${{ env.DOCKER_REPO }}:latest
 
     - name: 🧹 Clean up Minikube-in-DinD container
       if: always() # Run even if previous steps fail
       run: docker stop minikube-ci-env && docker rm minikube-ci-env
-# ^ This is the necessary 'run' command to execute the cleanup shell script.
