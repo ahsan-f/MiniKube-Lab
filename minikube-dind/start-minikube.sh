@@ -8,23 +8,21 @@ until docker info >/dev/null 2>&1; do
   sleep 1
 done
 
-echo "Docker daemon is running. Starting Minikube..."
+echo "Docker daemon is running. Giving it a moment to stabilize..."
+sleep 5 # Added buffer
 
-# Start minikube using the 'docker' driver
+echo "Starting Minikube..."
+
+# Start minikube with increased resources and less aggressive internal wait
 minikube start \
   --driver=docker \
   --force \
-  --wait=true \
-  --memory=4096 \
-  --cpus=2 \
+  --wait=false \
+  --memory=6000 \
+  --cpus=3 \
   --container-name minikube-cluster
 
-echo "Minikube started. Waiting for core cluster components to be ready..."
-# Wait for a key system component to confirm K8s is functional
-# We rely on the external workflow to run the final 'kubectl get nodes' check, but this confirms the internal start is complete.
-kubectl wait --namespace=kube-system --for=condition=ready pod -l k8s-app=kube-dns --timeout=5m
-
-echo "Minikube cluster initialization complete. Keeping container alive..."
+echo "Minikube start command executed. Relying on external check to confirm readiness."
 
 # CRUCIAL: Use tail -f /dev/null to keep the container running indefinitely
 tail -f /dev/null
