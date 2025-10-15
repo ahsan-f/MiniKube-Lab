@@ -18,7 +18,7 @@ env:
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15 # Give ample time for Minikube to start
+    timeout-minutes: 20 # Increased timeout for higher Minikube stability
 
     steps:
     - name: 📦 Checkout Repository
@@ -31,7 +31,6 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: 🏗️ Build Application Image (Local)
-      # Build the application image using the local context
       run: docker build -t ${{ env.DOCKER_IMAGE_NAME }}:latest -f app/Dockerfile .
 
     - name: 🧪 Run Application Tests
@@ -42,13 +41,12 @@ jobs:
     # --- 2. Minikube Deployment (Test Environment) ---
     # ----------------------------------------------------
     - name: 🐳 Build Minikube-in-DinD Image
-      # Build the Minikube DinD image using the new Dockerfile with checks
       run: docker build -t minikube-dind:latest -f minikube-dind/Dockerfile . 
 
     - name: 🚀 Start Minikube-in-DinD Service and Wait for Kubernetes
       id: start_minikube
       run: |
-        TIMEOUT=600 # 10 minutes wait
+        TIMEOUT=900 # Increased wait time to 15 minutes
         ELAPSED=0
         
         # Start the DinD container in privileged mode, running the start-minikube.sh entrypoint
@@ -69,8 +67,13 @@ jobs:
             break
           fi
           
-          sleep 5
-          ELAPSED=$((ELAPSED + 5))
+          sleep 10 # Check every 10 seconds
+          ELAPSED=$((ELAPSED + 10))
+          
+          # Log status every 60 seconds for better feedback
+          if [ $((ELAPSED % 60)) -eq 0 ]; then
+            echo "Status check at ${ELAPSED} seconds. Minikube still starting..."
+          fi
         done
         
         if [ $ELAPSED -ge $TIMEOUT ]; then
@@ -84,13 +87,12 @@ jobs:
         fi
 
     - name: 📤 Load Application Image into Minikube's Docker Daemon
-      # Transfers the app image from the host runner into the DinD environment
       run: |
         docker save ${{ env.DOCKER_IMAGE_NAME }}:latest | docker exec -i ${{ env.CONTAINER_NAME }} docker load
 
     - name: 🚢 Deploy Application to Minikube and Verify Rollout
       run: |
-        # Creates k8s deployment YAML
+        # Deployment YAML creation and application...
         cat <<EOF > deployment.yaml
         apiVersion: apps/v1
         kind: Deployment
@@ -109,7 +111,7 @@ jobs:
               containers:
               - name: my-node-app
                 image: ${{ env.DOCKER_IMAGE_NAME }}:latest
-                imagePullPolicy: Never # Critical: Forces use of the locally loaded image
+                imagePullPolicy: Never 
                 ports:
                 - containerPort: 3000
         ---
@@ -127,7 +129,6 @@ jobs:
           type: NodePort
         EOF
         
-        # Copies and applies the YAML inside the running Minikube container
         docker cp deployment.yaml ${{ env.CONTAINER_NAME }}:/tmp/deployment.yaml
         docker exec ${{ env.CONTAINER_NAME }} kubectl apply -f /tmp/deployment.yaml
         
@@ -138,7 +139,6 @@ jobs:
     # --- 3. Push to Docker Hub (Final Artifact) ---
     # ----------------------------------------------------
     - name: 🔑 Log in to Docker Hub
-      # Skips if credentials are not provided
       if: success() && env.DOCKER_USERNAME != ''
       uses: docker/login-action@v3
       with:
@@ -146,7 +146,6 @@ jobs:
         password: ${{ env.DOCKER_PASSWORD }}
 
     - name: 🏷️ Tag and Push Application Image to Docker Hub
-      # This step uses the DOCKER_REPO variable
       if: success() && env.DOCKER_USERNAME != ''
       run: |
         docker tag ${{ env.DOCKER_IMAGE_NAME }}:latest ${{ env.DOCKER_REPO }}:latest
