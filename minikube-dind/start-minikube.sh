@@ -13,6 +13,7 @@ sleep 5
 
 # --- AGGRESSIVE DEBUGGING START ---
 echo "--- PATH DEBUG ---"
+# Check if the binary exists (must pass after the Dockerfile fix)
 if [ ! -f /usr/local/bin/minikube ]; then
   echo "::error::FATAL: /usr/local/bin/minikube does not exist."
   ls -l /usr/local/bin/
@@ -29,14 +30,15 @@ echo "------------------"
 
 echo "Starting Minikube..."
 
-# FIX: Removed explicit --memory and --cpus limits for resource stability
+# Use stable K8s version and --preload to combat network instability in CI
 minikube start \
   --driver=docker \
+  --kubernetes-version=v1.27.3 \
   --force \
+  --preload \
   --wait=false \
   --container-name minikube-cluster
 
 echo "Minikube start command executed. Relying on external check to confirm readiness."
 
-# CRUCIAL: Use tail -f /dev/null to keep the container running indefinitely
 tail -f /dev/null
