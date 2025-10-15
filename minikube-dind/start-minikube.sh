@@ -13,11 +13,8 @@ sleep 5
 
 # --- AGGRESSIVE DEBUGGING START ---
 echo "--- PATH DEBUG ---"
-echo "Current PATH: $PATH"
-echo "Checking /usr/local/bin..."
-
 if [ ! -f /usr/local/bin/minikube ]; then
-  echo "::error::FATAL: /usr/local/bin/minikube does not exist after build."
+  echo "::error::FATAL: /usr/local/bin/minikube does not exist."
   ls -l /usr/local/bin/
   exit 1
 fi
@@ -26,13 +23,13 @@ if ! /usr/local/bin/minikube version; then
   echo "::error::FATAL: minikube binary is not executable or failed to run."
   exit 1
 fi
-echo "minikube version check passed. Proceeding with start."
+echo "minikube binary check passed. Proceeding with start."
 echo "------------------"
 # --- AGGRESSIVE DEBUGGING END ---
 
 echo "Starting Minikube..."
 
-# Run the Minikube start command
+# FIX: Removed explicit --memory and --cpus limits for resource stability
 minikube start \
   --driver=docker \
   --force \
