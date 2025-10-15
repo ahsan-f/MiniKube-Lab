@@ -21,47 +21,48 @@ jobs:
     
     steps:
     - name: 📦 Checkout Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4 # Updated to v4 for best practice
 
-    # --- Build and Test Application ---
+    # ----------------------------------------------------
+    # --- 1. Build and Test Application ---
+    # ----------------------------------------------------
     - name: 🛠️ Set up Docker BuildX
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v3 # Updated to v3 for best practice
 
     - name: 🏗️ Build Application Image
-      # Uses the DOCKER_IMAGE_NAME defined in env
       run: docker build -t ${{ env.DOCKER_IMAGE_NAME }}:latest -f app/Dockerfile .
 
     - name: 🧪 Run Application Tests
       run: |
         docker run --rm ${{ env.DOCKER_IMAGE_NAME }}:latest npm test
 
-    # --- Minikube Deployment within DinD ---
+    # ----------------------------------------------------
+    # --- 2. Minikube Deployment within DinD ---
+    # ----------------------------------------------------
     - name: 🐳 Build Minikube-in-DinD Image
       run: docker build -t minikube-dind:latest -f minikube-dind/Dockerfile .
 
-    - name: 🚀 Start Minikube-in-DinD Service
+    - name: 🚀 Start Minikube-in-DinD Service and Wait for Kubernetes
       run: |
         # Start the DinD container
         docker run -d --privileged --name minikube-ci-env minikube-dind:latest
         
         # Wait for Minikube's Kubernetes API to be available inside the container
-        docker exec minikube-ci-env bash -c '
-          until kubectl get nodes >/dev/null 2>&1; do
-            echo "Waiting for Minikube Kubernetes API..."
-            sleep 5
-          done
-          echo "Minikube Kubernetes API is ready and configured!"
-        '
+        echo "Waiting for Minikube Kubernetes API..."
+        until docker exec minikube-ci-env kubectl get nodes >/dev/null 2>&1; do
+          sleep 5
+        done
+        echo "Minikube Kubernetes API is ready and configured!"
 
     - name: 📤 Load Application Image into Minikube's Docker Daemon
-      # This is required to use 'imagePullPolicy: Never' in the deployment
+      # This is crucial for using 'imagePullPolicy: Never'
       run: |
-        # Save the application image to a tarball and load it into the DinD container's Docker daemon
+        # Save the application image to a tarball and stream it into the DinD container's Docker daemon
         docker save ${{ env.DOCKER_IMAGE_NAME }}:latest | docker exec -i minikube-ci-env docker load
 
     - name: 🚢 Deploy Application to Minikube
       run: |
-        # Create a simple Kubernetes deployment YAML
+        # 1. Create Deployment and Service YAML
         cat <<EOF > deployment.yaml
         apiVersion: apps/v1
         kind: Deployment
@@ -80,7 +81,7 @@ jobs:
               containers:
               - name: my-node-app
                 image: ${{ env.DOCKER_IMAGE_NAME }}:latest
-                imagePullPolicy: Never # Crucial: tells Kubernetes to use the locally loaded image
+                imagePullPolicy: Never 
                 ports:
                 - containerPort: 3000
         ---
@@ -98,19 +99,29 @@ jobs:
           type: NodePort
         EOF
         
-        # Copy the deployment YAML into the DinD container and apply it using the internal kubectl
+        # 2. Copy the YAML into the DinD container and apply it
         docker cp deployment.yaml minikube-ci-env:/tmp/deployment.yaml
         docker exec minikube-ci-env kubectl apply -f /tmp/deployment.yaml
         
-        # Verify deployment (optional, but good for CI)
+        # 3. Verify deployment 
         docker exec minikube-ci-env kubectl rollout status deployment/my-node-app-deployment --timeout=5m
 
-    # --- Push to Docker Hub ---
+    # ----------------------------------------------------
+    # --- 3. Push to Docker Hub ---
+    # ----------------------------------------------------
     - name: 🔑 Log in to Docker Hub
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3 # Updated to v3 for best practice
       with:
         username: ${{ env.DOCKER_USERNAME }}
         password: ${{ env.DOCKER_PASSWORD }}
 
     - name: 🏷️ Tag and Push Application Image to Docker Hub
-      # Tag the image with the full repo path and push
+      run: |
+        # Tag with the full repository path
+        docker tag ${{ env.DOCKER_IMAGE_NAME }}:latest ${{ env.DOCKER_REPO }}:latest
+        docker push ${{ env.DOCKER_REPO }}:latest
+
+    - name: 🧹 Clean up Minikube-in-DinD container
+      if: always() # Run even if previous steps fail
+      run: docker stop minikube-ci-env && docker rm minikube-ci-env
+# ^ This is the necessary 'run' command to execute the cleanup shell script.
