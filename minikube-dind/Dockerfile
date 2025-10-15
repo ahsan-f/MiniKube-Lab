@@ -11,19 +11,23 @@ RUN apk update && apk add \
     && rm -rf /var/cache/apk/*
 
 # Define versions for Minikube and Kubectl
-ARG K8S_VERSION="v1.27.3" # Recommended stable version
+ARG K8S_VERSION="v1.27.3" # Pinned stable version
 ARG MINIKUBE_VERSION="v1.31.2" 
 
 # --- Install Kubectl ---
-RUN curl -LO "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl" \
+RUN echo "Installing kubectl ${K8S_VERSION}" \
+    && curl -LO "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl" \
     && chmod +x kubectl \
-    && mv kubectl /usr/local/bin/
+    && install kubectl /usr/local/bin/kubectl \
+    && rm kubectl
 
 # --- Install Minikube ---
-# Note: minikube-linux-amd64 is the correct binary name for the generic x86_64 architecture
-RUN curl -LO "https://storage.googleapis.com/minikube/releases/${MINIKUBE_VERSION}/minikube-linux-amd64" \
-    && chmod +x minikube-linux-amd64 \
-    && mv minikube-linux-amd64 /usr/local/bin/minikube
+# Uses 'install' command to guarantee binary placement and executable permissions.
+RUN echo "Installing minikube ${MINIKUBE_VERSION}" \
+    && curl -Lo minikube "https://storage.googleapis.com/minikube/releases/${MINIKUBE_VERSION}/minikube-linux-amd64" \
+    && chmod +x minikube \
+    && install minikube /usr/local/bin/minikube \
+    && rm minikube
 
 # Add a script to start Minikube
 COPY minikube-dind/start-minikube.sh /usr/local/bin/start-minikube.sh
