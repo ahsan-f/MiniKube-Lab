@@ -2,7 +2,8 @@
 FROM docker:dind
 
 # Install required packages (curl, bash, coreutils, etc.)
-# FIX: Using --no-cache for stable package installs on Alpine and adding dependencies
+# FIX: Added libstdc++ and libgcc which are necessary runtime dependencies for the 
+# dynamically linked minikube binary to run on Alpine Linux (resolves "not found" error 127).
 RUN apk update \
     && apk add --no-cache \
     bash \
@@ -12,6 +13,8 @@ RUN apk update \
     shadow \
     e2fsprogs \
     coreutils \
+    libstdc++ \
+    libgcc \
     && rm -rf /var/cache/apk/*
 
 # Define versions for Minikube and Kubectl
