@@ -40,12 +40,13 @@ jobs:
     # --- 2. Minikube Deployment within DinD ---
     # ----------------------------------------------------
     - name: 🐳 Build Minikube-in-DinD Image
-      run: docker build -t minikube-dind:latest -f minikube-dind/Dockerfile .
+      # CRITICAL: This rebuilds the image with the fixed Dockerfile pathing
+      run: docker build -t minikube-dind:latest -f minikube-dind/Dockerfile . 
 
     - name: 🚀 Start Minikube-in-DinD Service and Wait for Kubernetes
       id: start_minikube
       run: |
-        TIMEOUT=600 # INCREASED to 10 minutes (600 seconds)
+        TIMEOUT=600 # 10 minutes (600 seconds)
         ELAPSED=0
         
         # Start the DinD container
@@ -76,9 +77,10 @@ jobs:
           
           # Added Logging for Diagnostics
           echo "::group::Minikube Status and Logs for Failure Diagnosis"
+          # Try to get Minikube's status and logs, even if the file paths fail
           docker exec ${{ env.CONTAINER_NAME }} minikube status || true
-          docker exec ${{ env.CONTAINER_NAME }} minikube logs --file minikube-ci.log || true
-          docker cp ${{ env.CONTAINER_NAME }}:/root/minikube-ci.log . || true
+          docker exec ${{ env.CONTAINER_NAME }} minikube logs --file /tmp/minikube-ci.log || true # Change log location to /tmp
+          docker cp ${{ env.CONTAINER_NAME }}:/tmp/minikube-ci.log . || true
           cat minikube-ci.log || true
           echo "::endgroup::"
 
@@ -153,3 +155,4 @@ jobs:
     - name: 🧹 Clean up Minikube-in-DinD container
       if: always()
       run: docker stop ${{ env.CONTAINER_NAME }} && docker rm ${{ env.CONTAINER_NAME }}
+      
