@@ -13,6 +13,7 @@ env:
   DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
   DOCKER_IMAGE_NAME: my-node-app
   DOCKER_REPO: ${{ secrets.DOCKER_USERNAME }}/my-node-app 
+  CONTAINER_NAME: minikube-ci-env
 
 jobs:
   build-test-deploy:
@@ -42,26 +43,26 @@ jobs:
       run: docker build -t minikube-dind:latest -f minikube-dind/Dockerfile .
 
     - name: 🚀 Start Minikube-in-DinD Service and Wait for Kubernetes
+      id: start_minikube
       run: |
-        CONTAINER_NAME=minikube-ci-env
         TIMEOUT=300 # 5 minutes max wait
         ELAPSED=0
         
         # Start the DinD container
-        docker run -d --privileged --name $CONTAINER_NAME minikube-dind:latest
+        docker run -d --privileged --name ${{ env.CONTAINER_NAME }} minikube-dind:latest
 
         echo "Waiting for Minikube Kubernetes API (max ${TIMEOUT} seconds)..."
         
         while [ $ELAPSED -lt $TIMEOUT ]; do
           # Check 1: Did the container crash?
-          if ! docker ps -q -f name=$CONTAINER_NAME; then
-            echo "::error::Minikube DinD container exited unexpectedly!"
-            docker logs $CONTAINER_NAME
+          if ! docker ps -q -f name=${{ env.CONTAINER_NAME }}; then
+            echo "::error::Minikube DinD container exited unexpectedly during startup!"
+            docker logs ${{ env.CONTAINER_NAME }}
             exit 1
           fi
           
           # Check 2: Is Minikube ready inside the container?
-          if docker exec $CONTAINER_NAME kubectl get nodes >/dev/null 2>&1; then
+          if docker exec ${{ env.CONTAINER_NAME }} kubectl get nodes >/dev/null 2>&1; then
             echo "Minikube Kubernetes API is ready and configured!"
             break
           fi
@@ -72,14 +73,22 @@ jobs:
         
         if [ $ELAPSED -ge $TIMEOUT ]; then
           echo "::error::Minikube failed to start within the timeout period."
-          docker logs $CONTAINER_NAME
+          
+          # Added Logging for Diagnostics
+          echo "::group::Minikube Status and Logs for Failure Diagnosis"
+          docker exec ${{ env.CONTAINER_NAME }} minikube status || true
+          docker exec ${{ env.CONTAINER_NAME }} minikube logs --file minikube-ci.log || true
+          docker cp ${{ env.CONTAINER_NAME }}:/root/minikube-ci.log . || true
+          cat minikube-ci.log || true
+          echo "::endgroup::"
+
+          docker logs ${{ env.CONTAINER_NAME }}
           exit 1
         fi
 
     - name: 📤 Load Application Image into Minikube's Docker Daemon
       run: |
-        # Stream the image into the DinD container's internal Docker daemon
-        docker save ${{ env.DOCKER_IMAGE_NAME }}:latest | docker exec -i minikube-ci-env docker load
+        docker save ${{ env.DOCKER_IMAGE_NAME }}:latest | docker exec -i ${{ env.CONTAINER_NAME }} docker load
 
     - name: 🚢 Deploy Application to Minikube
       run: |
@@ -121,11 +130,11 @@ jobs:
         EOF
         
         # 2. Copy and apply the YAML using the internal kubectl
-        docker cp deployment.yaml minikube-ci-env:/tmp/deployment.yaml
-        docker exec minikube-ci-env kubectl apply -f /tmp/deployment.yaml
+        docker cp deployment.yaml ${{ env.CONTAINER_NAME }}:/tmp/deployment.yaml
+        docker exec ${{ env.CONTAINER_NAME }} kubectl apply -f /tmp/deployment.yaml
         
         # 3. Verify deployment 
-        docker exec minikube-ci-env kubectl rollout status deployment/my-node-app-deployment --timeout=5m
+        docker exec ${{ env.CONTAINER_NAME }} kubectl rollout status deployment/my-node-app-deployment --timeout=5m
 
     # ----------------------------------------------------
     # --- 3. Push to Docker Hub ---
@@ -142,5 +151,5 @@ jobs:
         docker push ${{ env.DOCKER_REPO }}:latest
 
     - name: 🧹 Clean up Minikube-in-DinD container
-      if: always() # Run even if previous steps fail
-      run: docker stop minikube-ci-env && docker rm minikube-ci-env
+      if: always()
+      run: docker stop ${{ env.CONTAINER_NAME }} && docker rm ${{ env.CONTAINER_NAME }}
