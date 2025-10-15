@@ -7,22 +7,23 @@ RUN apk update && apk add \
     curl \
     socat \
     git \
+    shadow \
     && rm -rf /var/cache/apk/*
 
 # Define versions for Minikube and Kubectl
-# FIX: Pin to a stable K8s version known to work well in DinD (e.g., v1.27.3)
-ARG K8S_VERSION="v1.27.3" 
+ARG K8S_VERSION="v1.27.3" # Recommended stable version
 ARG MINIKUBE_VERSION="v1.31.2" 
 
-# Download and install kubectl
+# --- Install Kubectl ---
 RUN curl -LO "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl" \
-    && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl \
-    && rm kubectl
+    && chmod +x kubectl \
+    && mv kubectl /usr/local/bin/
 
-# Download and install Minikube
+# --- Install Minikube ---
+# Note: minikube-linux-amd64 is the correct binary name for the generic x86_64 architecture
 RUN curl -LO "https://storage.googleapis.com/minikube/releases/${MINIKUBE_VERSION}/minikube-linux-amd64" \
-    && install minikube-linux-amd64 /usr/local/bin/minikube \
-    && rm minikube-linux-amd64
+    && chmod +x minikube-linux-amd64 \
+    && mv minikube-linux-amd64 /usr/local/bin/minikube
 
 # Add a script to start Minikube
 COPY minikube-dind/start-minikube.sh /usr/local/bin/start-minikube.sh
