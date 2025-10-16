@@ -30,5 +30,3 @@ jobs:
           # Copy manifest into the container or run kubectl inside the DinD container
           docker exec minikube-dind-node kubectl apply -f k8s/deploy-node-app.yaml
           docker exec minikube-dind-node kubectl get pods -A
-
-
