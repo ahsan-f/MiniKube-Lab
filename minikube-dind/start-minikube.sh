@@ -9,7 +9,7 @@ until docker info >/dev/null 2>&1; do
 done
 
 echo "Docker daemon is running. Giving it a moment to stabilize..."
-sleep 5
+sleep 10
 
 # --- AGGRESSIVE DEBUGGING START ---
 echo "--- PATH DEBUG ---"
@@ -35,7 +35,7 @@ minikube start \
   --kubernetes-version=v1.27.3 \
   --force \
   --preload \
-  --wait=false \
+ # --wait=false \
   --container-name minikube-cluster \
   --cpus 2 \
   --memory 3072
