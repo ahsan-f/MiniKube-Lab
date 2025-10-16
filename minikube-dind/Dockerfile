@@ -1,12 +1,10 @@
-# Dockerfile
 FROM docker:dind
 
-# Install required packages
+# Install required packages (no duplicate entries)
 RUN apk update && apk add --no-cache \
     bash \
     curl \
     ca-certificates \
-    bash \
     shadow \
     e2fsprogs \
     coreutils \
@@ -15,7 +13,7 @@ RUN apk update && apk add --no-cache \
     libstdc++ \
     libgcc \
     gcompat \
-    && rm -rf /var/cache/apk/*
+ && rm -rf /var/cache/apk/*
 
 # Versions (adjust as needed)
 ARG K8S_VERSION="v1.27.3"
@@ -33,9 +31,12 @@ RUN echo "Installing minikube ${MINIKUBE_VERSION}" \
     && chmod +x /tmp/minikube \
     && mv /tmp/minikube /usr/local/bin/minikube
 
-# Copy startup script
-COPY start-minikube.sh /usr/local/bin/start-minikube.sh
+# Copy startup script. Use a path relative to the build context.
+# Make sure the file exists at ./minikube-dind/start-minikube.sh (or adjust the path below)
+COPY minikube-dind/start-minikube.sh /usr/local/bin/start-minikube.sh
+
+# Ensure the script is executable
 RUN chmod +x /usr/local/bin/start-minikube.sh
 
-# Optional: expose entrypoint for easy run
+# Default entrypoint to start Minikube inside DinD
 ENTRYPOINT ["/usr/local/bin/start-minikube.sh"]
