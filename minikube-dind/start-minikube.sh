@@ -1,13 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-# Environment-driven defaults
+# Optional: allow overriding with environment variables
 K8S_VERSION="${K8S_VERSION:-v1.27.3}"
 CPUS="${CPUS:-2}"
-MEMORY_MB="${MEMORY_MB:-4096}"
+MEMORY_MB="${MEMORY_MB:-4096}"  # in MB
 LOG_PREFIX="[minikube-dind-start]"
 
 echo "${LOG_PREFIX} Waiting for inner Docker daemon to be ready..."
+# Wait for the inner Docker daemon to become ready
 until docker info >/dev/null 2>&1; do
   echo "${LOG_PREFIX} Docker daemon not ready yet. Retrying..."
   sleep 1
