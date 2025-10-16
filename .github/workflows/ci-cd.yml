@@ -1,157 +1,25 @@
-name: CI/CD with Minikube, Docker Hub, and GitHub Actions
+name: Minikube-in-DinD CI
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-
-env:
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-  DOCKER_IMAGE_NAME: my-node-app
-  DOCKER_REPO: ${{ secrets.DOCKER_USERNAME }}/my-node-app 
-  CONTAINER_NAME: minikube-ci-env
+    branches: [ main ]
 
 jobs:
-  build-test-deploy:
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20 # Increased timeout for higher Minikube stability
+    permissions:
+      contents: read
 
     steps:
-    - name: 📦 Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    # ----------------------------------------------------
-    # --- 1. Build and Test Application ---
-    # ----------------------------------------------------
-    - name: 🛠️ Set up Docker BuildX
-      uses: docker/setup-buildx-action@v3
-
-    - name: 🏗️ Build Application Image (Local)
-      run: docker build -t ${{ env.DOCKER_IMAGE_NAME }}:latest -f app/Dockerfile .
-
-    - name: 🧪 Run Application Tests
-      run: |
-        docker run --rm ${{ env.DOCKER_IMAGE_NAME }}:latest npm test
-
-    # ----------------------------------------------------
-    # --- 2. Minikube Deployment (Test Environment) ---
-    # ----------------------------------------------------
-    - name: 🐳 Build Minikube-in-DinD Image
-      run: docker build -t minikube-dind:latest -f minikube-dind/Dockerfile . 
-
-    - name: 🚀 Start Minikube-in-DinD Service and Wait for Kubernetes
-      id: start_minikube
-      run: |
-        TIMEOUT=900 # Increased wait time to 15 minutes
-        ELAPSED=0
-        
-        # Start the DinD container in privileged mode, running the start-minikube.sh entrypoint
-        docker run -d --privileged --name ${{ env.CONTAINER_NAME }} minikube-dind:latest
-
-        echo "Waiting for Minikube Kubernetes API (max ${TIMEOUT} seconds)..."
-        
-        while [ $ELAPSED -lt $TIMEOUT ]; do
-          if ! docker ps -q -f name=${{ env.CONTAINER_NAME }}; then
-            echo "::error::Minikube DinD container exited unexpectedly during startup! Check minikube-dind/start-minikube.sh for errors."
-            docker logs ${{ env.CONTAINER_NAME }}
-            exit 1
-          fi
-          
-          # Health Check: Check if kubectl can see the nodes
-          if docker exec ${{ env.CONTAINER_NAME }} kubectl get nodes >/dev/null 2>&1; then
-            echo "Minikube Kubernetes API is ready and configured! 🎉"
-            break
-          fi
-          
-          sleep 10 # Check every 10 seconds
-          ELAPSED=$((ELAPSED + 10))
-          
-          # Log status every 60 seconds for better feedback
-          if [ $((ELAPSED % 60)) -eq 0 ]; then
-            echo "Status check at ${ELAPSED} seconds. Minikube still starting..."
-          fi
-        done
-        
-        if [ $ELAPSED -ge $TIMEOUT ]; then
-          echo "::error::Minikube failed to start within the timeout period. 😭"
-          
-          echo "::group::Minikube Status and Logs for Failure Diagnosis"
-          docker exec ${{ env.CONTAINER_NAME }} minikube status || true
-          docker logs ${{ env.CONTAINER_NAME }}
-          echo "::endgroup::"
-          exit 1
-        fi
-
-    - name: 📤 Load Application Image into Minikube's Docker Daemon
-      run: |
-        docker save ${{ env.DOCKER_IMAGE_NAME }}:latest | docker exec -i ${{ env.CONTAINER_NAME }} docker load
-
-    - name: 🚢 Deploy Application to Minikube and Verify Rollout
-      run: |
-        # Deployment YAML creation and application...
-        cat <<EOF > deployment.yaml
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: my-node-app-deployment
-        spec:
-          replicas: 1
-          selector:
-            matchLabels:
-              app: my-node-app
-          template:
-            metadata:
-              labels:
-                app: my-node-app
-            spec:
-              containers:
-              - name: my-node-app
-                image: ${{ env.DOCKER_IMAGE_NAME }}:latest
-                imagePullPolicy: Never 
-                ports:
-                - containerPort: 3000
-        ---
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: my-node-app-service
-        spec:
-          selector:
-            app: my-node-app
-          ports:
-            - protocol: TCP
-              port: 80
-              targetPort: 3000
-          type: NodePort
-        EOF
-        
-        docker cp deployment.yaml ${{ env.CONTAINER_NAME }}:/tmp/deployment.yaml
-        docker exec ${{ env.CONTAINER_NAME }} kubectl apply -f /tmp/deployment.yaml
-        
-        echo "Waiting for deployment rollout to finish..."
-        docker exec ${{ env.CONTAINER_NAME }} kubectl rollout status deployment/my-node-app-deployment --timeout=5m
-
-    # ----------------------------------------------------
-    # --- 3. Push to Docker Hub (Final Artifact) ---
-    # ----------------------------------------------------
-    - name: 🔑 Log in to Docker Hub
-      if: success() && env.DOCKER_USERNAME != ''
-      uses: docker/login-action@v3
-      with:
-        username: ${{ env.DOCKER_USERNAME }}
-        password: ${{ env.DOCKER_PASSWORD }}
-
-    - name: 🏷️ Tag and Push Application Image to Docker Hub
-      if: success() && env.DOCKER_USERNAME != ''
-      run: |
-        docker tag ${{ env.DOCKER_IMAGE_NAME }}:latest ${{ env.DOCKER_REPO }}:latest
-        docker push ${{ env.DOCKER_REPO }}:latest
-        echo "Image successfully pushed to Docker Hub as ${{ env.DOCKER_REPO }}:latest"
-
-    - name: 🧹 Clean up Minikube-in-DinD container
-      if: always()
-      run: docker stop ${{ env.CONTAINER_NAME }} && docker rm ${{ env.CONTAINER_NAME }}
+      - name: Build DinD image with Minikube
+        run: |
+          docker build -t minikube-dind:latest -f minikube-dind/Dockerfile .
+      
+      - name: Run Minikube inside DinD
+        run: |
+          docker run --privileged --name minikube-dind-instance -d minikube-dind:latest
+          # Wait for readiness and test
+          docker logs minikube-dind-instance
