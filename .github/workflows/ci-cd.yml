@@ -1,25 +1,34 @@
-name: Minikube-in-DinD CI
+name: Minikube-in-DinD Node App
 
 on:
   push:
     branches: [ main ]
 
 jobs:
-  test:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build DinD image with Minikube
+      - name: Build DinD image with Node app
         run: |
-          docker build -t minikube-dind:latest -f minikube-dind/Dockerfile .
+          docker build -t minikube-dind-node:latest -f minikube-dind/Dockerfile .
       
-      - name: Run Minikube inside DinD
+      - name: Run DinD container
         run: |
-          docker run --privileged --name minikube-dind-instance -d minikube-dind:latest
-          # Wait for readiness and test
-          docker logs minikube-dind-instance
+          docker run --privileged -d --name minikube-dind-node minikube-dind/node:latest
+          docker logs -f minikube-dind-node &
+      
+      - name: Load app image into DinD (if needed)
+        run: |
+          docker build -t my-node-app:latest .
+          docker exec minikube-dind-node docker load < <(docker save my-node-app:latest)
+      
+      - name: Apply Kubernetes manifest
+        run: |
+          # Copy manifest into the container or run kubectl inside the DinD container
+          docker exec minikube-dind-node kubectl apply -f k8s/deploy-node-app.yaml
+          docker exec minikube-dind-node kubectl get pods -A
+
+
