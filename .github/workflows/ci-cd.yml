@@ -39,7 +39,7 @@ jobs:
             if [ $ELAPSED -ge $TIMEOUT ]; then
               echo "Minikube failed to start within $TIMEOUT seconds."
               exit 1
-            fi
+            endif
             
             echo "Minikube not ready yet. Waiting 5 seconds..."
             sleep 5
@@ -60,23 +60,33 @@ jobs:
           docker save my-node-app:latest | docker exec -i minikube-dind-node docker load
 
       # ---------------------------------------------------------------------
-      # 3. Deploy to Kubernetes
+      # 3. Deploy to Kubernetes (Contains Final Fixes for File Transfer)
       # ---------------------------------------------------------------------
       
-      - name: Apply Kubernetes Manifest (FINAL FIX) ✅
+      - name: Apply Kubernetes Manifest (FINAL FIX & DEBUG) ✅
         run: |
-          # --- DIAGNOSTIC STEP (kept for safety) ---
+          # --- DIAGNOSTIC STEP: Host Check ---
           echo "--- Host Runner File Check ---"
           ls -l k8s/ || (echo "ERROR: k8s directory or manifest not found on host." && exit 1)
           echo "----------------------------"
           
-          # FINAL FIX: Copy k8s/deploy-node-app.yml (the source file name)
+          # FIX: Copy the manifest file (Source: .yml, Destination: standard .yaml)
           echo "Copying manifest into DinD container..."
-          docker cp k8s/deploy-node-app.yml minikube-dind-node:/tmp/deploy-node-app.yml 
+          docker cp k8s/deploy-node-app.yml minikube-dind-node:/tmp/deploy-node-app.yaml
           
+          # CRITICAL CHECK: Ensure docker cp succeeded
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Docker CP failed! Check permissions or container status."
+            exit 1
+          fi
+
+          # --- DEBUG STEP: Container Check ---
+          echo "Verifying file presence inside container at destination..."
+          docker exec minikube-dind-node ls -l /tmp/deploy-node-app.yaml || (echo "ERROR: Manifest file not found in /tmp inside DinD container after copy." && exit 1)
+
           # Run kubectl inside the Minikube container, referencing the file's internal path
           echo "Applying k8s deployment manifest..."
-          docker exec minikube-dind-node kubectl apply -f /tmp/deploy-node-app.yml
+          docker exec minikube-dind-node kubectl apply -f /tmp/deploy-node-app.yaml
           
           echo "Verifying deployment status..."
           docker exec minikube-dind-node kubectl get pods -l app=node-app
