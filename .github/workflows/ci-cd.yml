@@ -27,7 +27,6 @@ jobs:
           docker logs -f minikube-dind-node &
           
       - name: Wait for Minikube Cluster Readiness ⏳
-        # Polls 'kubectl get nodes' inside the container until the cluster is ready
         run: |
           echo "Waiting for Minikube to start..."
           TIMEOUT=300
@@ -52,22 +51,26 @@ jobs:
       # ---------------------------------------------------------------------
 
       - name: Build App Image and Load into Minikube 🚀
-        # Combines build, save, and load into a single pipe (FIX for internal Docker errors)
+        # Combines build, save, and load into a single pipe
         run: |
           echo "Building Node.js application image..."
-          # Build the image on the host runner
           docker build -t my-node-app:latest -f app/Dockerfile .
           
           echo "Transferring image into minikube-dind-node container..."
-          # Pipe the image directly to 'docker load' inside the DinD container
           docker save my-node-app:latest | docker exec -i minikube-dind-node docker load
 
       # ---------------------------------------------------------------------
       # 3. Deploy to Kubernetes
       # ---------------------------------------------------------------------
       
-      - name: Apply Kubernetes Manifest (FIXED) ✅
+      - name: Apply Kubernetes Manifest (FIXED DIAGNOSTICS) ✅
         run: |
+          # --- DIAGNOSTIC STEP ---
+          echo "--- Host Runner File Check ---"
+          # This command ensures 'k8s/deploy-node-app.yaml' exists on the host runner.
+          ls -l k8s/ || (echo "ERROR: k8s directory or manifest not found on host." && exit 1)
+          echo "----------------------------"
+          
           # FIX: Copy the manifest file from the host runner into the running container
           echo "Copying manifest into DinD container..."
           docker cp k8s/deploy-node-app.yaml minikube-dind-node:/tmp/deploy-node-app.yaml
