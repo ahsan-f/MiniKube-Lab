@@ -1,81 +1,41 @@
 #!/bin/bash
-set -euo pipefail
+set -e
 
-# Optional: allow overriding with environment variables
-K8S_VERSION="${K8S_VERSION:-v1.27.3}"
-CPUS="${CPUS:-2}"
-MEMORY_MB="${MEMORY_MB:-4096}"  # in MB
-LOG_PREFIX="[minikube-dind-start]"
+# --- 1. Start the inner Docker Daemon ---
+echo "Starting inner Docker daemon in background..."
+# Run the Docker daemon in the background and redirect logs to a file for diagnostics
+/usr/local/bin/dockerd-entrypoint.sh dockerd > /var/log/dockerd.log 2>&1 &
+DOCKERD_PID=$!
 
-echo "${LOG_PREFIX} Waiting for inner Docker daemon to be ready..."
-# Wait for the inner Docker daemon to become ready
-until docker info >/dev/null 2>&1; do
-  echo "${LOG_PREFIX} Docker daemon not ready yet. Retrying..."
-  sleep 1
+# --- 2. Wait for Docker to be ready (Crucial for DinD) ---
+echo "Waiting for Docker socket to be ready..."
+TIMEOUT=90  # Give Docker up to 90 seconds to start
+count=0
+
+while ! docker info >/dev/null 2>&1 && [ $count -lt $TIMEOUT ]; do
+    echo "[minikube-dind-start] Docker daemon not ready yet. Retrying in 1s..."
+    sleep 1
+    count=$((count + 1))
 done
-echo "${LOG_PREFIX} Docker daemon is ready."
 
-echo "${LOG_PREFIX} Verifying required binaries..."
-if [ ! -x /usr/local/bin/minikube ]; then
-  echo "${LOG_PREFIX} ERROR: minikube not found or not executable at /usr/local/bin/minikube" >&2
-  ls -l /usr/local/bin/minikube || true
-  exit 1
-fi
-if [ ! -x /usr/local/bin/kubectl ]; then
-  echo "${LOG_PREFIX} ERROR: kubectl not found or not executable at /usr/local/bin/kubectl" >&2
-  ls -l /usr/local/bin/kubectl || true
-  exit 1
-fi
-
-echo "${LOG_PREFIX} Binaries verified."
-/usr/local/bin/minikube version
-/usr/local/bin/kubectl version --client --output=json
-
-echo "${LOG_PREFIX} Starting Minikube with docker driver..."
-MINIKUBE_CMD=( 
-  start
-  --driver=docker
-  --kubernetes-version="${K8S_VERSION}"
-  --cpus="${CPUS}"
-  --memory="${MEMORY_MB}"
-  --log_dir=/var/log/minikube
-  --alsologtostderr
-  --v=2
-)
-
-if ! /usr/local/bin/minikube "${MINIKUBE_CMD[@]}"; then
-  echo "${LOG_PREFIX} Minikube start failed. Collecting diagnostics..." >&2
-  /usr/local/bin/minikube status || true
-  /usr/local/bin/minikube logs || true
-  /usr/local/bin/kubectl version --client || true
-  /usr/local/bin/kubectl get pods -A --ignore-not-found || true
-  exit 1
-fi
-
-echo "${LOG_PREFIX} Minikube start command issued. Waiting for Kubernetes API readiness..."
-
-API_TIMEOUT=600
-SLEEP_SEC=5
-ELAPSED=0
-
-while true; do
-  if /usr/local/bin/kubectl get nodes >/dev/null 2>&1; then
-    echo "${LOG_PREFIX} Kubernetes API is ready. Cluster is up."
-    break
-  fi
-
-  ELAPSED=$((ELAPSED + SLEEP_SEC))
-  if [ "$ELAPSED" -ge "$API_TIMEOUT" ]; then
-    echo "${LOG_PREFIX} ERROR: API server did not become ready within ${API_TIMEOUT}s."
-    echo "${LOG_PREFIX} Collecting final diagnostics..."
-    /usr/local/bin/minikube status || true
-    /usr/local/bin/minikube logs || true
-    /usr/local/bin/kubectl version --client || true
-    /usr/local/bin/kubectl get pods -A || true
+if [ $count -ge $TIMEOUT ]; then
+    echo "--- ERROR: Inner Docker daemon failed to start within $TIMEOUT seconds. ---"
+    echo "Dumping Docker daemon logs:"
+    cat /var/log/dockerd.log
+    kill $DOCKERD_PID
     exit 1
-  fi
+fi
+echo "Inner Docker daemon is ready."
 
-  sleep "$SLEEP_SEC"
-done
+# --- 3. Start Minikube ---
+echo "Starting Minikube using the 'docker' driver..."
+# Use --wait to ensure the control plane is ready before the script continues
+# Use --force for CI environments where Minikube might have stale data
+minikube start --driver=docker --force --wait=true
 
-echo "${LOG_PREFIX} Minikube is up and the Kubernetes API is accessible."
+echo "Minikube is operational."
+
+# --- 4. Keep the container alive ---
+# Wait for the background Docker daemon process to finish.
+# Since 'dockerd' runs indefinitely, this keeps the container alive.
+wait $DOCKERD_PID
