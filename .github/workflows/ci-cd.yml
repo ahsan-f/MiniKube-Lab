@@ -8,25 +8,28 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Build DinD image with Node app
-        # This step is assumed to build an image that contains Docker and Minikube setup
+      # ---------------------------------------------------------------------
+      # 1. Build and Run DinD Container (The Kubernetes Host)
+      # ---------------------------------------------------------------------
+
+      - name: Build Minikube DinD Image
+        # Assumes minikube-dind/Dockerfile exists and is configured to run Minikube
         run: docker build -t minikube-dind-node:latest -f minikube-dind/Dockerfile .
       
-      - name: Run DinD container
-        # The --privileged flag is crucial for DinD
+      - name: Run DinD Container and Stream Logs
+        # --privileged is required to run Docker inside Docker
         run: |
           docker run --privileged -d --name minikube-dind-node minikube-dind-node:latest
-          # Start streaming logs in the background for debugging
+          # Stream logs in the background for startup monitoring (e.g., Minikube initialization)
           docker logs -f minikube-dind-node &
           
-      - name: Wait for Minikube to be ready ⏳
-        # This is the crucial fix: repeatedly check the status until the cluster is running
+      - name: Wait for Minikube Cluster Readiness ⏳
+        # Ensures 'kubectl' is available inside the container before proceeding
         run: |
           echo "Waiting for Minikube to start..."
-          # Poll the kubectl command inside the container until the cluster is ready
           TIMEOUT=300
           START_TIME=$(date +%s)
           
@@ -44,17 +47,31 @@ jobs:
           done
           echo "Minikube is ready!"
 
-      - name: Load app image into DinD
-        # Build the app image on the host runner, then transfer it to the DinD environment
+      # ---------------------------------------------------------------------
+      # 2. Build App Image and Transfer (The Deployment Target)
+      # ---------------------------------------------------------------------
+
+      - name: Build App Image and Load into Minikube (FIXED) 🚀
+        # Combines build, save, and load into a single pipe to avoid filesystem/access errors
+        # Uses -f app/Dockerfile and the context (the current directory '.')
         run: |
+          echo "Building Node.js application image..."
           docker build -t my-node-app:latest -f app/Dockerfile .
-          docker exec minikube-dind-node docker load < <(docker save my-node-app:latest)
+          
+          echo "Transferring image into minikube-dind-node container..."
+          # docker save pipes the image binary directly into docker load inside the container
+          docker save my-node-app:latest | docker exec -i minikube-dind-node docker load
+
+      # ---------------------------------------------------------------------
+      # 3. Deploy to Kubernetes
+      # ---------------------------------------------------------------------
       
-      - name: Apply Kubernetes manifest and Verify
-        # Run kubectl commands inside the DinD container to interact with Minikube
+      - name: Apply Kubernetes Manifest
+        # Runs kubectl inside the Minikube container to deploy the app
         run: |
-          echo "Applying Kubernetes manifest..."
+          echo "Applying k8s deployment manifest..."
           docker exec minikube-dind-node kubectl apply -f k8s/deploy-node-app.yaml
           
-          echo "Verifying deployment..."
-          docker exec minikube-dind-node kubectl get pods -A
+          echo "Verifying deployment status..."
+          docker exec minikube-dind-node kubectl get pods -l app=node-app
+          docker exec minikube-dind-node kubectl get services -l app=node-app
