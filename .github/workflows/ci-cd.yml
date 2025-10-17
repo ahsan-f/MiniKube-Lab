@@ -72,11 +72,11 @@ jobs:
           
           # FINAL FIX: Copy k8s/deploy-node-app.yml (the source file name)
           echo "Copying manifest into DinD container..."
-          docker cp k8s/deploy-node-app.yml minikube-dind-node:/tmp/deploy-node-app.yaml 
+          docker cp k8s/deploy-node-app.yml minikube-dind-node:/tmp/deploy-node-app.yml 
           
           # Run kubectl inside the Minikube container, referencing the file's internal path
           echo "Applying k8s deployment manifest..."
-          docker exec minikube-dind-node kubectl apply -f /tmp/deploy-node-app.yaml
+          docker exec minikube-dind-node kubectl apply -f /tmp/deploy-node-app.yml
           
           echo "Verifying deployment status..."
           docker exec minikube-dind-node kubectl get pods -l app=node-app
