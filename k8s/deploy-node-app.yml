@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: node-app-deployment
+  name: my-node-app-deployment
   labels:
     app: node-app
 spec:
@@ -18,9 +18,7 @@ spec:
       containers:
       - name: node-app
         image: my-node-app:latest
-        # CRITICAL for DinD/Minikube setup:
-        # Prevents Kubernetes from trying to pull the image from a remote registry
-        # and forces it to use the image loaded into the Minikube Docker daemon.
+        # CRITICAL: Ensures Kubernetes uses the image loaded into the Minikube Docker daemon.
         imagePullPolicy: Never
         ports:
         - containerPort: 3000
@@ -28,14 +26,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: node-app-service
+  name: my-node-app-service
 spec:
   selector:
     app: node-app
-  # For Minikube/local testing, NodePort is often used to expose the service
+  # NodePort allows external access to the service via the node's IP and a specific port.
   type: NodePort
   ports:
     - protocol: TCP
       port: 80
       targetPort: 3000
-      # nodePort: 30080 # Optional: Specify a well-known port
