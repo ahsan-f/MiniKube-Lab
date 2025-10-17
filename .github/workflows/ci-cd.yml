@@ -12,21 +12,49 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build DinD image with Node app
-        run: |
-          docker build -t minikube-dind-node:latest -f minikube-dind/Dockerfile .
+        # This step is assumed to build an image that contains Docker and Minikube setup
+        run: docker build -t minikube-dind-node:latest -f minikube-dind/Dockerfile .
       
       - name: Run DinD container
+        # The --privileged flag is crucial for DinD
         run: |
           docker run --privileged -d --name minikube-dind-node minikube-dind-node:latest
+          # Start streaming logs in the background for debugging
           docker logs -f minikube-dind-node &
-      
-      - name: Load app image into DinD (if needed)
+          
+      - name: Wait for Minikube to be ready ⏳
+        # This is the crucial fix: repeatedly check the status until the cluster is running
+        run: |
+          echo "Waiting for Minikube to start..."
+          # Poll the kubectl command inside the container until the cluster is ready
+          TIMEOUT=300
+          START_TIME=$(date +%s)
+          
+          while ! docker exec minikube-dind-node kubectl get nodes > /dev/null 2>&1; do
+            CURRENT_TIME=$(date +%s)
+            ELAPSED=$((CURRENT_TIME - START_TIME))
+            
+            if [ $ELAPSED -ge $TIMEOUT ]; then
+              echo "Minikube failed to start within $TIMEOUT seconds."
+              exit 1
+            fi
+            
+            echo "Minikube not ready yet. Waiting 5 seconds..."
+            sleep 5
+          done
+          echo "Minikube is ready!"
+
+      - name: Load app image into DinD
+        # Build the app image on the host runner, then transfer it to the DinD environment
         run: |
           docker build -t my-node-app:latest -f app/Dockerfile .
           docker exec minikube-dind-node docker load < <(docker save my-node-app:latest)
       
-      - name: Apply Kubernetes manifest
+      - name: Apply Kubernetes manifest and Verify
+        # Run kubectl commands inside the DinD container to interact with Minikube
         run: |
-          # Copy manifest into the container or run kubectl inside the DinD container
+          echo "Applying Kubernetes manifest..."
           docker exec minikube-dind-node kubectl apply -f k8s/deploy-node-app.yaml
+          
+          echo "Verifying deployment..."
           docker exec minikube-dind-node kubectl get pods -A
