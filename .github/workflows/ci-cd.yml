@@ -73,7 +73,7 @@ jobs:
           
           # FIX: Copy the manifest file (Source: .yml, Destination: standard .yaml)
           echo "Copying manifest into DinD container..."
-          docker cp k8s/deploy-node-app.yml minikube-dind-node:/tmp/deploy-node-app.yaml
+          docker cp k8s/deploy-node-app.yml minikube-dind-node:/tmp/deploy-node-app.yml
           
           # CRITICAL CHECK: Ensure docker cp succeeded (prevents silent failure)
           if [ $? -ne 0 ]; then
@@ -83,11 +83,11 @@ jobs:
 
           # --- DEBUG STEP: Container Check ---
           echo "Verifying file presence inside container at destination..."
-          docker exec minikube-dind-node ls -l /tmp/deploy-node-app.yaml || (echo "ERROR: Manifest file not found in /tmp inside DinD container after copy." && exit 1)
+          docker exec minikube-dind-node ls -l /tmp/deploy-node-app.yml || (echo "ERROR: Manifest file not found in /tmp inside DinD container after copy." && exit 1)
 
           # Run kubectl inside the Minikube container, referencing the file's internal path
           echo "Applying k8s deployment manifest..."
-          docker exec minikube-dind-node kubectl apply -f /tmp/deploy-node-app.yaml
+          docker exec minikube-dind-node kubectl apply -f /tmp/deploy-node-app.yml
           
           echo "Verifying deployment status..."
           docker exec minikube-dind-node kubectl get pods -l app=node-app
