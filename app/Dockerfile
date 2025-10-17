@@ -6,7 +6,7 @@ WORKDIR /app
 
 # 1. Copy package files first for cache efficiency.
 # This step REQUIRES both package.json AND package-lock.json to exist on your host machine.
-COPY package.json package-lock.json ./
+COPY app/package.json app/package-lock.json ./
 
 # 2. Install production dependencies using npm ci for reproducibility
 RUN npm ci --only=production
