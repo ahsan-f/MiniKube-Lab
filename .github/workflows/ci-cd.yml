@@ -17,7 +17,7 @@ jobs:
       
       - name: Run DinD container
         run: |
-          docker run --privileged -d --name minikube-dind-node app/node:latest
+          docker run --privileged -d --name minikube-dind-node:latest
           docker logs -f minikube-dind-node &
       
       - name: Load app image into DinD (if needed)
