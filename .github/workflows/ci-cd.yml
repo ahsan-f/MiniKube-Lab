@@ -22,7 +22,7 @@ jobs:
       
       - name: Load app image into DinD (if needed)
         run: |
-          docker build -t my-node-app:latest .
+          docker build -t my-node-app:latest -f app/dockerfile .
           docker exec minikube-dind-node docker load < <(docker save my-node-app:latest)
       
       - name: Apply Kubernetes manifest
