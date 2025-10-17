@@ -26,7 +26,7 @@ jobs:
           # Stream logs in the background for debugging Minikube startup failures
           docker logs -f minikube-dind-node &
           
-      - name: Wait for Minikube Cluster Readiness ⏳
+      - name: Wait for Minikube Cluster Readiness ⏳ (Syntax Fixed)
         run: |
           echo "Waiting for Minikube to start..."
           TIMEOUT=300
@@ -39,7 +39,7 @@ jobs:
             if [ $ELAPSED -ge $TIMEOUT ]; then
               echo "Minikube failed to start within $TIMEOUT seconds."
               exit 1
-            endif
+            fi # <--- CORRECT BASH SYNTAX
             
             echo "Minikube not ready yet. Waiting 5 seconds..."
             sleep 5
@@ -60,13 +60,14 @@ jobs:
           docker save my-node-app:latest | docker exec -i minikube-dind-node docker load
 
       # ---------------------------------------------------------------------
-      # 3. Deploy to Kubernetes (Contains Final Fixes for File Transfer)
+      # 3. Deploy to Kubernetes (Final File Transfer Fixes Included)
       # ---------------------------------------------------------------------
       
       - name: Apply Kubernetes Manifest (FINAL FIX & DEBUG) ✅
         run: |
           # --- DIAGNOSTIC STEP: Host Check ---
           echo "--- Host Runner File Check ---"
+          # Check for the correct file extension (.yml is used in the repository)
           ls -l k8s/ || (echo "ERROR: k8s directory or manifest not found on host." && exit 1)
           echo "----------------------------"
           
@@ -74,7 +75,7 @@ jobs:
           echo "Copying manifest into DinD container..."
           docker cp k8s/deploy-node-app.yml minikube-dind-node:/tmp/deploy-node-app.yaml
           
-          # CRITICAL CHECK: Ensure docker cp succeeded
+          # CRITICAL CHECK: Ensure docker cp succeeded (prevents silent failure)
           if [ $? -ne 0 ]; then
             echo "ERROR: Docker CP failed! Check permissions or container status."
             exit 1
