@@ -63,17 +63,16 @@ jobs:
       # 3. Deploy to Kubernetes
       # ---------------------------------------------------------------------
       
-      - name: Apply Kubernetes Manifest (FIXED DIAGNOSTICS) ✅
+      - name: Apply Kubernetes Manifest (FINAL FIX) ✅
         run: |
-          # --- DIAGNOSTIC STEP ---
+          # --- DIAGNOSTIC STEP (kept for safety) ---
           echo "--- Host Runner File Check ---"
-          # This command ensures 'k8s/deploy-node-app.yaml' exists on the host runner.
           ls -l k8s/ || (echo "ERROR: k8s directory or manifest not found on host." && exit 1)
           echo "----------------------------"
           
-          # FIX: Copy the manifest file from the host runner into the running container
+          # FINAL FIX: Copy k8s/deploy-node-app.yml (the source file name)
           echo "Copying manifest into DinD container..."
-          docker cp k8s/deploy-node-app.yaml minikube-dind-node:/tmp/deploy-node-app.yaml
+          docker cp k8s/deploy-node-app.yml minikube-dind-node:/tmp/deploy-node-app.yaml 
           
           # Run kubectl inside the Minikube container, referencing the file's internal path
           echo "Applying k8s deployment manifest..."
