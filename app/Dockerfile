@@ -1,21 +1,33 @@
-# Dockerfile - Node.js app
-FROM node:18-alpine
+# Stage 1: Builder
+# Use a full Node image for building dependencies
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Cache-friendly copy - CORRECTED: Assumes package.json is in the build context root
-# COPY package*.json ./
+# 1. Copy package files first for cache efficiency.
+# This step REQUIRES both package.json AND package-lock.json to exist on your host machine.
 COPY package.json package-lock.json ./
 
-# Install dependencies
+# 2. Install production dependencies using npm ci for reproducibility
 RUN npm ci --only=production
 
-# Copy app code - CORRECTED: Assumes the rest of the application files (e.g., app.js) 
-# are in a subdirectory named 'app'
-COPY app/ ./ 
+# 3. Copy the rest of the application code
+COPY . .
 
-# Expose the port the app runs on
+# Stage 2: Production
+# Use a minimal base image to run the application
+FROM node:18-alpine AS production
+
+WORKDIR /app
+
+# 1. Copy only the installed dependencies and app code from the builder stage
+# This step excludes development dependencies and build tools.
+COPY --from=builder /app /app
+
+# 2. Define environment variables and startup command
+ENV PORT=3000
+
 EXPOSE 3000
 
-# Start command (matches package.json "start")
-CMD ["npm", "start"]
+# Execute the application
+CMD [ "node", "app.js" ]
