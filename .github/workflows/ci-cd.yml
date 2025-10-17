@@ -4,6 +4,11 @@ on:
   push:
     branches: [ main ]
 
+env:
+  # Define your Docker Hub username here. This should be added as a GitHub Secret.
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  IMAGE_NAME: my-node-app
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -47,41 +52,64 @@ jobs:
           echo "Minikube is ready!"
 
       # ---------------------------------------------------------------------
-      # 2. Build App Image and Transfer
+      # 2. Build App Image and Push to Docker Hub
       # ---------------------------------------------------------------------
 
-      - name: Build App Image and Load into Minikube 🚀
-        # Combines build, save, and load into a single pipe
+      - name: Build and Tag App Image
+        # Image is initially built with a local tag
         run: |
           echo "Building Node.js application image..."
-          docker build -t my-node-app:latest -f app/Dockerfile .
+          docker build -t ${{ env.IMAGE_NAME }}:latest -f app/Dockerfile .
+
+      - name: Login to Docker Hub and Push Image 🔑
+        run: |
+          echo "Logging into Docker Hub..."
+          # Login using the GitHub Secrets (DOCKER_USERNAME and DOCKER_PASSWORD)
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u ${{ env.DOCKER_USERNAME }} --password-stdin
           
+          # Tag the image with the repository name
+          DOCKER_REPO_TAG=${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          echo "Tagging image as $DOCKER_REPO_TAG"
+          docker tag ${{ env.IMAGE_NAME }}:latest $DOCKER_REPO_TAG
+          
+          # Push the image
+          echo "Pushing image to Docker Hub..."
+          docker push $DOCKER_REPO_TAG
+          
+          # IMPORTANT: Retain the original local tag for minikube loading compatibility
+          docker tag $DOCKER_REPO_TAG ${{ env.IMAGE_NAME }}:latest
+
+      - name: Load App Image into Minikube 💾
+        # Uses the locally tagged image to load into the DinD environment
+        run: |
           echo "Transferring image into minikube-dind-node container..."
-          docker save my-node-app:latest | docker exec -i minikube-dind-node docker load
+          docker save ${{ env.IMAGE_NAME }}:latest | docker exec -i minikube-dind-node docker load
 
       # ---------------------------------------------------------------------
-      # 3. Deploy to Kubernetes (Using Pipe for Reliable Transfer)
+      # 3. Deploy to Kubernetes (Fixed .yml Extension)
       # ---------------------------------------------------------------------
       
-      - name: Apply Kubernetes Manifest (FIXED by Piping File) ✅
+      - name: Apply Kubernetes Manifest ✅
         run: |
           # --- DIAGNOSTIC STEP: Host Check ---
           echo "--- Host Runner File Check ---"
           ls -l k8s/ || (echo "ERROR: k8s directory or manifest not found on host." && exit 1)
           echo "----------------------------"
           
-          # FIX: Pipe the file content directly into the container's shell (Most Reliable Method)
+          # FIX: Pipe the file content directly into the container's shell
           echo "Piping manifest into DinD container..."
-          # Source is .yml (from host) | Destination inside is .yaml (standard convention)
-          cat k8s/deploy-node-app.yml | docker exec -i minikube-dind-node sh -c 'cat > /tmp/deploy-node-app.yaml'
+          # Source is .yml (from host) | Destination inside is also .yml (for consistency)
+          cat k8s/deploy-node-app.yml | docker exec -i minikube-dind-node sh -c 'cat > /tmp/deploy-node-app.yml'
           
           # --- DEBUG STEP: Container Check (To confirm pipe success) ---
           echo "Verifying file presence inside container at destination..."
-          docker exec minikube-dind-node ls -l /tmp/deploy-node-app.yaml || (echo "FATAL ERROR: Manifest pipe failed. File not found." && exit 1)
+          # Checking for .yml file
+          docker exec minikube-dind-node ls -l /tmp/deploy-node-app.yml || (echo "FATAL ERROR: Manifest pipe failed. File not found." && exit 1)
 
           # Run kubectl inside the Minikube container, referencing the file's internal path
           echo "Applying k8s deployment manifest..."
-          docker exec minikube-dind-node kubectl apply -f /tmp/deploy-node-app.yaml
+          # Applying the .yml file
+          docker exec minikube-dind-node kubectl apply -f /tmp/deploy-node-app.yml
           
           echo "Verifying deployment status..."
           docker exec minikube-dind-node kubectl get pods -l app=node-app
