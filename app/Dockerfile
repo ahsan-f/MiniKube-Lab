@@ -4,7 +4,8 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Cache-friendly copy - CORRECTED: Assumes package.json is in the build context root
-COPY package*.json ./
+# COPY package*.json ./
+COPY package.json package-lock.json ./
 
 # Install dependencies
 RUN npm ci --only=production
