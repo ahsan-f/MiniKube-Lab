@@ -1,10 +1,11 @@
 name: CI
 on:
-  - pull_request
+  pull_request:
+  workflow_dispatch:
 jobs:
   job1:
     runs-on: ubuntu-latest
-    name: job1
+    name: Minikube Setup and Status Check
     steps:
       - name: start minikube
         uses: medyagh/setup-minikube@latest
@@ -24,8 +25,16 @@ jobs:
           feature-gates: 'DownwardAPIHugePages=true'
           mount-path: '/Users/user1/test-files:/testdata'
           wait: false
-          insecure-registry: 'localhost:5000,10.0.0.0/24'
-          start-args: '--delete-on-failure --subnet 192.168.50.0'
-      # now you can run kubectl to see the pods in the cluster
-      - name: kubectl
-        run: kubectl get pods -A
+          insecure-registry: 'localhost:5000'
+
+      - name: Display Minikube Status
+        run: |
+          echo "Minikube version is $(minikube version)"
+          minikube status
+          kubectl cluster-info
+          kubectl get nodes -o wide
+          kubectl get pods -A
+
+      - name: Verify Ingress Addon
+        run: |
+          kubectl get pods -n ingress
